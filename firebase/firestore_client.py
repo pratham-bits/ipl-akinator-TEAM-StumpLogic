@@ -49,27 +49,43 @@ class FirestoreClient:
             print("[Firebase] firebase-admin not installed — cloud storage disabled")
             return
 
-        creds_path = os.getenv(
-            "FIREBASE_CREDENTIALS",
-            "firebase/serviceAccountKey.json"
-        )
-
-        # Resolve path relative to project root
-        if not os.path.isabs(creds_path):
-            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            creds_path   = os.path.join(project_root, creds_path)
-
-        if not os.path.exists(creds_path):
-            print(
-                f"[Firebase] serviceAccountKey.json not found at {creds_path}. "
-                "Cloud storage disabled — see firebase/setup_firebase.md"
-            )
-            return
-
         try:
             # WHY check if already initialized?
             #   FastAPI reloads modules — initializing twice raises an error.
-            if not firebase_admin._apps:
+            if firebase_admin._apps:
+                self.db        = firestore.client()
+                self.available = True
+                return
+
+            # OPTION 1: Credentials JSON as environment variable (Render/cloud)
+            # WHY? On cloud platforms, we can't commit secret files.
+            # Store the entire JSON content as FIREBASE_CREDENTIALS_JSON env var.
+            creds_json = os.getenv("FIREBASE_CREDENTIALS_JSON")
+            if creds_json:
+                import json as _json
+                creds_dict = _json.loads(creds_json)
+                cred = credentials.Certificate(creds_dict)
+                firebase_admin.initialize_app(cred)
+
+            else:
+                # OPTION 2: Credentials file path (local development)
+                creds_path = os.getenv(
+                    "FIREBASE_CREDENTIALS",
+                    "firebase/serviceAccountKey.json"
+                )
+                if not os.path.isabs(creds_path):
+                    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                    creds_path   = os.path.join(project_root, creds_path)
+
+                if not os.path.exists(creds_path):
+                    print(
+                        f"[Firebase] Credentials not found. "
+                        "Set FIREBASE_CREDENTIALS_JSON env var (cloud) "
+                        "or place serviceAccountKey.json locally. "
+                        "See firebase/setup_firebase.md"
+                    )
+                    return
+
                 cred = credentials.Certificate(creds_path)
                 firebase_admin.initialize_app(cred)
 
