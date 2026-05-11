@@ -157,8 +157,8 @@ ipl-frontend/               ← Frontend (React / Vite)
 
 ```bash
 # Clone and enter project
-git clone https://github.com/yourusername/ipl-akinator
-cd ipl-akinator/ipl_akinator
+git clone https://github.com/pratham-bits/ipl-akinator-TEAM-StumpLogic
+cd ipl-akinator
 
 # Create virtual environment
 python -m venv venv
@@ -184,7 +184,7 @@ API docs at `http://localhost:8000/docs`
 ### Frontend
 
 ```bash
-cd ipl-frontend
+cd frontend
 npm install
 npm run dev
 ```
