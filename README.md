@@ -131,7 +131,7 @@ ipl_akinator/               ← Backend (Python / FastAPI)
 ├── run.py                  ← Server entry point
 └── requirements.txt
 
-ipl-frontend/               ← Frontend (React / Vite)
+frontend/               ← Frontend (React / Vite)
 └── src/
     ├── App.jsx             ← Game state machine
     ├── api/game.js         ← API service layer
