@@ -62,21 +62,26 @@ app = FastAPI(
 #   (e.g. localhost:3000) from calling APIs on another (localhost:8000)
 #   unless the API explicitly allows it.
 #
-# WHY allow all origins during development?
-#   Our React frontend (port 3000) calls this API (port 8000).
-#   Without CORS, every API call fails silently in the browser.
-#
-# WHY ["*"] and not specific origins?
-#   During hackathon development, we don't know the final frontend URL.
-#   ["*"] allows all origins. In production, you'd restrict to your domain.
+# WHY read from environment variable?
+#   In development: ALLOWED_ORIGINS=* (allow everything)
+#   In production : ALLOWED_ORIGINS=https://ipl-akinator.web.app
+#   This way we never hardcode URLs and never accidentally expose
+#   a production API to all origins.
 # ─────────────────────────────────────────────────────────────────────────────
+
+# Parse allowed origins from env — comma-separated list or "*"
+_raw_origins = os.getenv("ALLOWED_ORIGINS", "*")
+ALLOWED_ORIGINS = (
+    ["*"] if _raw_origins.strip() == "*"
+    else [o.strip() for o in _raw_origins.split(",") if o.strip()]
+)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins     = ["*"],          # All origins allowed (dev mode)
+    allow_origins     = ALLOWED_ORIGINS,
     allow_credentials = True,
-    allow_methods     = ["*"],          # GET, POST, PUT, DELETE, etc.
-    allow_headers     = ["*"],          # Any header the frontend sends
+    allow_methods     = ["*"],
+    allow_headers     = ["*"],
 )
 
 
