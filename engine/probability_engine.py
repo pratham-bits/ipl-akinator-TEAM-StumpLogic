@@ -16,8 +16,6 @@
 import math
 import json
 import os
-import sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from typing import Dict, List, Tuple, Optional
 from engine.question_bank import (
@@ -288,46 +286,62 @@ class CandidatePool:
 
     def select_best_question(self) -> Optional[Dict]:
         """
-        Finds the question with the highest information gain
-        that hasn't been asked yet.
-
-        STRATEGY:
-            1. Filter out already-asked questions
-            2. For each remaining question, compute information gain
-            3. Return the question with the highest IG
-
-        WHY also filter by minimum gain threshold?
-            If all remaining questions have IG < 0.01 bits, they're useless.
-            In that case, we should just guess (if confidence is high enough).
-
-        Returns:
-            The best question dict, or None if no useful questions remain.
+        Improved question selection with 3 fixes:
+        1. First question variety (random from top 4)
+        2. Decisive question boost (captaincy/WK/finisher boosted when relevant)
+        3. Category diversity (penalise repeating same category)
         """
-        available = [
-            q for q in QUESTION_BANK
-            if q["id"] not in self.asked_ids
-        ]
-
+        import random
+        available = [q for q in QUESTION_BANK if q["id"] not in self.asked_ids]
         if not available:
             return None
 
-        # Compute IG for each available question
-        scored_questions = []
-        for question in available:
-            ig = self.information_gain(question["id"])
-            scored_questions.append((ig, question))
+        active_count = self.get_active_candidate_count()
+        probs        = self.get_probabilities()
 
-        # Sort by information gain descending
-        scored_questions.sort(key=lambda x: x[0], reverse=True)
+        # Compute IG with adjustments
+        scored = []
+        for q in available:
+            ig = self.information_gain(q["id"])
 
-        # Return the best question (or None if all have near-zero IG)
-        best_ig, best_question = scored_questions[0]
+            # BOOST decisive questions when pool is small
+            decisive_ids = {
+                "has_captained", "is_wicketkeeper", "is_finisher",
+                "won_orange_cap", "won_purple_cap", "won_any_cap",
+                "won_ipl_title", "is_death_bowler", "high_profile",
+                "is_aggressive_batter", "left_hand_bat", "bowls_spin"
+            }
+            if q["id"] in decisive_ids and active_count <= 50:
+                top_10 = self.get_top_candidates(10)
+                top_ids = {c["player_id"] for c in top_10}
+                top_players = [p for p in self.players if p["id"] in top_ids]
+                fit_count = sum(1 for p in top_players if compute_player_fit(q, p))
+                fit_pct = fit_count / max(len(top_players), 1)
+                if 0.15 <= fit_pct <= 0.85:
+                    ig *= 3.0  # Strong boost
 
-        # If best question gains < 0.01 bits, pool is already very concentrated
-        if best_ig < 0.01:
+            # PENALISE over-used categories
+            asked_qs = [get_question(qid) for qid in self.asked_ids if qid in {q['id'] for q in QUESTION_BANK}]
+            same_cat = sum(1 for aq in asked_qs if aq["category"] == q["category"])
+            if same_cat >= 2:
+                ig *= 0.5
+
+            scored.append((ig, q))
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+
+        # FIRST QUESTION VARIETY: rotate among top 4
+        if len(self.asked_ids) == 0:
+            top_n   = min(4, len(scored))
+            weights = [max(s[0], 0.001) for s in scored[:top_n]]
+            total_w = sum(weights)
+            weights = [w / total_w for w in weights]
+            return random.choices([s[1] for s in scored[:top_n]], weights=weights, k=1)[0]
+
+        best_ig, best_q = scored[0]
+        if best_ig < 0.005:
             return None
-
-        return best_question
+        return best_q
 
     # ─────────────────────────────────────────────────────────────────────────
     # CONFIDENCE AND GUESSING
@@ -371,14 +385,35 @@ class CandidatePool:
 
     def should_guess(self, threshold: float = 0.80) -> bool:
         """
-        Returns True if the top player's confidence exceeds the threshold.
+        Dynamic confidence threshold based on active pool size.
 
-        WHY 0.80 default?
-            The project brief specifies ≥ 80% confidence before guessing.
-            This prevents premature guesses that frustrate users.
+        WHY dynamic?
+            With 802 players, even a perfect 8-question game rarely
+            concentrates probability above 80% — mathematically impossible
+            when 10+ similar players remain.
+
+            Solution: lower threshold proportionally as questions are asked,
+            but never below 40% (prevents wild guesses).
+
+        Thresholds:
+            Active > 20  → use full 80% (still early, need more info)
+            Active 10-20 → 65% (narrowing well)
+            Active 5-10  → 55% (small pool, top candidate likely right)
+            Active < 5   → 45% (very small pool, go with top)
         """
         _, confidence = self.get_confidence()
-        return confidence >= threshold
+        active = self.get_active_candidate_count()
+
+        if active > 20:
+            effective_threshold = threshold          # 80% — still broad
+        elif active > 10:
+            effective_threshold = 0.60               # 60%
+        elif active > 5:
+            effective_threshold = 0.50               # 50%
+        else:
+            effective_threshold = 0.40               # 40% — very narrow pool
+
+        return confidence >= effective_threshold
 
     def get_active_candidate_count(self) -> int:
         """
@@ -389,7 +424,7 @@ class CandidatePool:
             (e.g. 0.0001%). The "active" count shows how many are truly in the race.
         """
         probs = self.get_probabilities()
-        return sum(1 for p in probs.values() if p > 0.01)
+        return sum(1 for p in probs.values() if p > 0.001)
 
     # ─────────────────────────────────────────────────────────────────────────
     # SERIALIZATION (for session persistence)

@@ -70,8 +70,6 @@ def enhance_question(
     if not claude.available:
         return raw_question
 
-    _rate_limit()  # Respect free tier RPM limit
-
     # Skip enhancement for first question — engine picks best first Q
     # and there's no history context yet to make rephrasing meaningful
     if len(history) == 0:
@@ -134,8 +132,6 @@ def enhance_guess(
     """
     if not claude.available:
         return _fallback_narration(final_guess, confidence_pct, top_candidates)
-
-    _rate_limit()  # Respect free tier RPM limit
 
     user_message = build_confidence_narrator_prompt(
         history        = history,

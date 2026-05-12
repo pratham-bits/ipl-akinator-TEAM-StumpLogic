@@ -129,11 +129,10 @@ class GeminiClient:
             resp = requests.post(url, json=body, timeout=15)
 
             if resp.status_code == 429:
-                # Rate limited — wait 5 seconds and retry once
-                import time
-                print(f"[LLM] Rate limited, retrying in 5s...")
-                time.sleep(5)
-                resp = requests.post(url, json=body, timeout=15)
+                # Rate limited — skip LLM, use fallback immediately (no delay)
+                # WHY no retry? A 5s delay blocks every answer click.
+                # Better UX: fall back to raw question instantly.
+                return None
 
             if resp.status_code != 200:
                 print(f"[LLM ERROR] API returned {resp.status_code}: {resp.text[:150]}")
